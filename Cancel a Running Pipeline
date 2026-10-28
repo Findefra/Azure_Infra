@@ -1,0 +1,20 @@
+function Stop-AzDoPipelineRun {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$RunId,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{
+        Authorization  = "Basic $base64Auth"
+        "Content-Type" = "application/json"
+    }
+
+    $body = @{ status = "cancelling" } | ConvertTo-Json
+    $uri  = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/runs/$RunId`?api-version=7.1"
+
+    $result = Invoke-RestMethod -Uri $uri -Headers $headers -Method Patch -Body $body
+    Write-Host "Pipeline run $RunId cancellation requested. Current state: $($result.state)" -ForegroundColor Yellow
+}
