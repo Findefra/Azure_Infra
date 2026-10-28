@@ -1,0 +1,22 @@
+function Stop-AzDoRelease {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$ReleaseId,
+        [string]$Comment = "Cancelled via PowerShell",
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+
+    $body = @{
+        status = "abandoned"
+        comment = $Comment
+    } | ConvertTo-Json
+
+    $uri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/releases/$ReleaseId`?api-version=7.1"
+    $result = Invoke-RestMethod -Uri $uri -Headers $headers -Method Patch -Body $body
+
+    Write-Host "Release $ReleaseId abandoned." -ForegroundColor Yellow
+    return $result
+}
