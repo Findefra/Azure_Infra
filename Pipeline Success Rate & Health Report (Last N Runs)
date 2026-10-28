@@ -1,0 +1,32 @@
+function Get-AzDoPipelineHealth {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$PipelineId,
+        [int]$Top = 20,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{ Authorization = "Basic $base64Auth" }
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$PipelineId/runs?api-version=7.1&`$top=$Top"
+    $runs = (Invoke-RestMethod -Uri $uri -Headers $headers).value
+
+    $total     = $runs.Count
+    $succeeded = ($runs | Where-Object result -eq "succeeded").Count
+    $failed    = ($runs | Where-Object result -eq "failed").Count
+    $canceled  = ($runs | Where-Object result -eq "canceled").Count
+
+    [PSCustomObject]@{
+        PipelineId     = $PipelineId
+        TotalRuns      = $total
+        Succeeded      = $succeeded
+        Failed         = $failed
+        Canceled       = $canceled
+        SuccessRate    = if ($total -gt 0) { [math]::Round(($succeeded / $total) * 100, 1) } else { 0 }
+        LastRunResult  = $runs[0].result
+        LastRunTime    = $runs[0].createdDate
+        RecentFailures = $runs | Where-Object result -eq "failed" | Select-Object -First 5 id, createdDate, sourceBranch
+    }
+}
