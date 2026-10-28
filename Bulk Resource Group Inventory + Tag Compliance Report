@@ -1,0 +1,21 @@
+# Generates a detailed inventory of all RGs across subscriptions with tag compliance scoring
+$report = @()
+Get-AzSubscription | Where-Object State -eq "Enabled" | ForEach-Object {
+    Set-AzContext -SubscriptionId $_.Id | Out-Null
+    Get-AzResourceGroup | ForEach-Object {
+        $tags = $_.Tags
+        $required = @("Environment","Owner","CostCenter","Application")
+        $missing = $required | Where-Object { -not $tags.ContainsKey($_) }
+        $report += [PSCustomObject]@{
+            Subscription   = $_.SubscriptionId
+            ResourceGroup  = $_.ResourceGroupName
+            Location       = $_.Location
+            TagsPresent    = ($tags.Keys -join ", ")
+            MissingTags    = ($missing -join ", ")
+            ComplianceScore= [math]::Round((($required.Count - $missing.Count) / $required.Count) * 100, 0)
+            ProvisionedBy  = $tags["CreatedBy"]
+        }
+    }
+}
+$report | Export-Csv ".\RG_Tag_Compliance_$(Get-Date -Format yyyyMMdd).csv" -NoTypeInformation
+$report | Format-Table -AutoSize
