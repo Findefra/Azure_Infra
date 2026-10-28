@@ -1,0 +1,22 @@
+function Export-AzDoPipeline {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$PipelineId,
+        [string]$OutputPath = ".\pipeline-export.json",
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{ Authorization = "Basic $base64Auth" }
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$PipelineId`?api-version=7.1&`$expand=configuration"
+    $pipeline = Invoke-RestMethod -Uri $uri -Headers $headers
+
+    $pipeline | ConvertTo-Json -Depth 10 | Out-File -FilePath $OutputPath -Encoding utf8
+    Write-Host "Pipeline definition exported to $OutputPath" -ForegroundColor Green
+
+    if ($pipeline.configuration.type -eq "yaml") {
+        Write-Host "YAML path: $($pipeline.configuration.path)" -ForegroundColor Cyan
+    }
+}
