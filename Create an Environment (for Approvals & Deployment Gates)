@@ -1,0 +1,25 @@
+function New-AzDoEnvironment {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [string]$Description = "Created via PowerShell",
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = @{
+        Authorization  = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+        "Content-Type" = "application/json"
+    }
+
+    $body = @{
+        name        = $EnvironmentName
+        description = $Description
+    } | ConvertTo-Json
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/environments?api-version=7.1"
+    $env = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+
+    Write-Host "Environment '$EnvironmentName' created (ID: $($env.id))" -ForegroundColor Green
+    return $env
+}
