@@ -1,0 +1,31 @@
+function Get-AzDoReleaseHealth {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$DefinitionId,
+        [int]$Top = 20,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+    $uri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/releases?api-version=7.1&definitionId=$DefinitionId&`$top=$Top"
+
+    $releases = (Invoke-RestMethod -Uri $uri -Headers $headers).value
+
+    $total     = $releases.Count
+    $succeeded = ($releases | Where-Object { $_.status -eq "active" -or $_.status -eq "succeeded" }).Count   # adjust based on your status model
+    $failed    = ($releases | Where-Object status -eq "failed" -or status -eq "rejected").Count
+    $abandoned = ($releases | Where-Object status -eq "abandoned").Count
+
+    [PSCustomObject]@{
+        DefinitionId   = $DefinitionId
+        TotalReleases  = $total
+        Succeeded      = $succeeded
+        Failed         = $failed
+        Abandoned      = $abandoned
+        SuccessRate    = if ($total -gt 0) { [math]::Round(($succeeded / $total) * 100, 1) } else { 0 }
+        LastRelease    = $releases[0].name
+        LastStatus     = $releases[0].status
+        LastCreated    = $releases[0].createdOn
+    }
+}
