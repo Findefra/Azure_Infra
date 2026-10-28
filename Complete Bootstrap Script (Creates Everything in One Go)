@@ -1,0 +1,41 @@
+function New-AzDoPipelineBootstrap {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$PipelineName,
+        [Parameter(Mandatory)][string]$RepositoryName,
+        [string]$YamlPath = "/azure-pipelines.yml",
+        [string]$VariableGroupName = "$PipelineName-vars",
+        [string]$EnvironmentName  = "$PipelineName-env",
+        [hashtable]$Variables = @{
+            "Environment" = "dev"
+            "BuildConfiguration" = "Release"
+        },
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    Write-Host "=== Starting Azure DevOps Pipeline Bootstrap ===" -ForegroundColor Cyan
+
+    # 1. Create Variable Group
+    $vg = New-AzDoVariableGroup -Organization $Organization -Project $Project `
+        -VariableGroupName $VariableGroupName -Variables $Variables
+
+    # 2. Create Environment
+    $env = New-AzDoEnvironment -Organization $Organization -Project $Project `
+        -EnvironmentName $EnvironmentName
+
+    # 3. Create YAML Pipeline
+    $pipeline = New-AzDoYamlPipeline -Organization $Organization -Project $Project `
+        -PipelineName $PipelineName -RepositoryName $RepositoryName -YamlPath $YamlPath
+
+    Write-Host "`n=== Bootstrap Complete ===" -ForegroundColor Green
+    [PSCustomObject]@{
+        PipelineId       = $pipeline.PipelineId
+        PipelineName     = $pipeline.Name
+        PipelineUrl      = $pipeline.Url
+        VariableGroupId  = $vg.id
+        VariableGroup    = $vg.name
+        EnvironmentId    = $env.id
+        EnvironmentName  = $env.name
+    }
+}
