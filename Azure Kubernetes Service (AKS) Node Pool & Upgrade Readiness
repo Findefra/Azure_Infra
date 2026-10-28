@@ -1,0 +1,11 @@
+# Checks AKS cluster version, node pool health, and available upgrades
+param([Parameter(Mandatory)][string]$ResourceGroupName, [Parameter(Mandatory)][string]$ClusterName)
+
+$cluster = Get-AzAksCluster -ResourceGroupName $ResourceGroupName -Name $ClusterName
+Write-Host "Current Kubernetes version: $($cluster.KubernetesVersion)"
+Write-Host "Node Resource Group: $($cluster.NodeResourceGroup)"
+
+Get-AzAksNodePool -ResourceGroupName $ResourceGroupName -ClusterName $ClusterName | Format-Table Name, Count, VmSize, Mode, OrchestratorVersion, ProvisioningState
+
+$upgrades = Get-AzAksClusterUpgradeProfile -ResourceGroupName $ResourceGroupName -ClusterName $ClusterName
+$upgrades.ControlPlaneProfile.Upgrades | Select-Object Version, IsPreview | Format-Table
