@@ -1,0 +1,25 @@
+# Starts or stops VMs while respecting dependency tags (e.g., StartOrder / StopOrder)
+param(
+    [Parameter(Mandatory)][ValidateSet("Start","Stop")][string]$Action,
+    [string]$ResourceGroupName,
+    [switch]$WhatIf
+)
+
+$vms = Get-AzVM -ResourceGroupName $ResourceGroupName | Sort-Object {
+    if ($Action -eq "Start") { [int]($_.Tags["StartOrder"] ?? 999) }
+    else { [int]($_.Tags["StopOrder"] ?? 999) }
+}
+
+foreach ($vm in $vms) {
+    $status = (Get-AzVM -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -Status).Statuses |
+              Where-Object Code -like "PowerState/*" | Select-Object -ExpandProperty DisplayStatus
+
+    if ($Action -eq "Start" -and $status -ne "VM running") {
+        if ($WhatIf) { Write-Host "Would start $($vm.Name)" }
+        else { Start-AzVM -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -NoWait }
+    }
+    elseif ($Action -eq "Stop" -and $status -ne "VM deallocated") {
+        if ($WhatIf) { Write-Host "Would stop $($vm.Name)" }
+        else { Stop-AzVM -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -Force -NoWait }
+    }
+}
