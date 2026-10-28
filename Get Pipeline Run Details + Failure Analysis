@@ -1,0 +1,33 @@
+function Get-AzDoPipelineRun {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$RunId,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{ Authorization = "Basic $base64Auth" }
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/runs/$RunId`?api-version=7.1"
+    $run = Invoke-RestMethod -Uri $uri -Headers $headers
+
+    # Get timeline for detailed stage/job results
+    $timelineUri = "https://dev.azure.com/$Organization/$Project/_apis/build/builds/$RunId/timeline?api-version=7.1"
+    $timeline = Invoke-RestMethod -Uri $timelineUri -Headers $headers
+
+    $failedJobs = $timeline.records | Where-Object { $_.result -eq "failed" -or $_.result -eq "canceled" }
+
+    [PSCustomObject]@{
+        RunId        = $run.id
+        Pipeline     = $run.pipeline.name
+        State        = $run.state
+        Result       = $run.result
+        SourceBranch = $run.resources.repositories.self.refName
+        CreatedBy    = $run.createdBy.displayName
+        StartTime    = $run.createdDate
+        FinishTime   = $run.finishedDate
+        Url          = $run._links.web.href
+        FailedJobs   = $failedJobs | Select-Object name, result, startTime, finishTime, errorCount
+    }
+}
