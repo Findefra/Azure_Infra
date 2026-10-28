@@ -1,0 +1,247 @@
+<#
+.SYNOPSIS
+    Complete Azure DevOps Pipeline Bootstrap Script
+.DESCRIPTION
+    Creates a YAML Pipeline + Variable Group + Environment in one go.
+.NOTES
+    Requires a PAT with these permissions:
+    - Build: Read & execute
+    - Variable Groups: Read, create, & manage
+    - Environments: Read, create, & manage
+    - Code: Read
+#>
+
+# ============================================================
+# CONFIGURATION - Update these values
+# ============================================================
+$Organization   = "your-organization"          # e.g. contoso
+$Project        = "your-project"               # e.g. MyProduct
+$PipelineName   = "MyApp-CI"
+$RepositoryName = "MyApp"                      # Azure Repos repository name
+$YamlPath       = "/azure-pipelines.yml"       # Path to your YAML file in the repo
+$VariableGroupName = "$PipelineName-vars"
+$EnvironmentName   = "$PipelineName-env"
+
+# Pipeline variables (add more as needed)
+$Variables = @{
+    "Environment"         = "dev"
+    "BuildConfiguration"  = "Release"
+    "SkipTests"           = "false"
+}
+
+# Set your PAT (recommended: use environment variable)
+# $env:AZDO_PAT = "your-pat-here"
+if (-not $env:AZDO_PAT) {
+    Write-Error "Please set the environment variable AZDO_PAT with a valid Personal Access Token."
+    return
+}
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+function Get-AzDoHeaders {
+    param([string]$Pat = $env:AZDO_PAT)
+    $base64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    return @{
+        Authorization  = "Basic $base64"
+        "Content-Type" = "application/json"
+    }
+}
+
+function New-AzDoVariableGroup {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$VariableGroupName,
+        [Parameter(Mandatory)][hashtable]$Variables,
+        [string[]]$SecretVariables = @(),
+        [string]$Description = "Created via PowerShell Bootstrap"
+    )
+
+    $headers = Get-AzDoHeaders
+
+    $vars = @{}
+    foreach ($key in $Variables.Keys) {
+        $vars[$key] = @{
+            value    = $Variables[$key]
+            isSecret = ($SecretVariables -contains $key)
+        }
+    }
+
+    $body = @{
+        name        = $VariableGroupName
+        description = $Description
+        type        = "Vsts"
+        variables   = $vars
+    } | ConvertTo-Json -Depth 5
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/variablegroups?api-version=7.1"
+
+    try {
+        $group = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+        Write-Host "  [OK] Variable Group created: $($group.name) (ID: $($group.id))" -ForegroundColor Green
+        return $group
+    }
+    catch {
+        Write-Host "  [ERROR] Failed to create Variable Group: $_" -ForegroundColor Red
+        throw
+    }
+}
+
+function New-AzDoEnvironment {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [string]$Description = "Created via PowerShell Bootstrap"
+    )
+
+    $headers = Get-AzDoHeaders
+
+    $body = @{
+        name        = $EnvironmentName
+        description = $Description
+    } | ConvertTo-Json
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/environments?api-version=7.1"
+
+    try {
+        $env = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+        Write-Host "  [OK] Environment created: $($env.name) (ID: $($env.id))" -ForegroundColor Green
+        return $env
+    }
+    catch {
+        Write-Host "  [ERROR] Failed to create Environment: $_" -ForegroundColor Red
+        throw
+    }
+}
+
+function New-AzDoYamlPipeline {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$PipelineName,
+        [Parameter(Mandatory)][string]$RepositoryName,
+        [string]$YamlPath = "/azure-pipelines.yml",
+        [string]$Folder = "\\"
+    )
+
+    $headers = Get-AzDoHeaders
+
+    # Get Repository ID
+    $repoUri = "https://dev.azure.com/$Organization/$Project/_apis/git/repositories/$RepositoryName`?api-version=7.1"
+    try {
+        $repo = Invoke-RestMethod -Uri $repoUri -Headers $headers
+    }
+    catch {
+        Write-Host "  [ERROR] Repository '$RepositoryName' not found." -ForegroundColor Red
+        throw
+    }
+
+    $body = @{
+        name   = $PipelineName
+        folder = $Folder
+        configuration = @{
+            type = "yaml"
+            path = $YamlPath
+            repository = @{
+                id   = $repo.id
+                type = "azureReposGit"
+                name = $RepositoryName
+            }
+        }
+    } | ConvertTo-Json -Depth 5
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines?api-version=7.1"
+
+    try {
+        $pipeline = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+        Write-Host "  [OK] YAML Pipeline created: $($pipeline.name) (ID: $($pipeline.id))" -ForegroundColor Green
+        return $pipeline
+    }
+    catch {
+        Write-Host "  [ERROR] Failed to create Pipeline: $_" -ForegroundColor Red
+        throw
+    }
+}
+
+# ============================================================
+# MAIN BOOTSTRAP FUNCTION
+# ============================================================
+
+function New-AzDoPipelineBootstrap {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$PipelineName,
+        [Parameter(Mandatory)][string]$RepositoryName,
+        [string]$YamlPath = "/azure-pipelines.yml",
+        [string]$VariableGroupName,
+        [string]$EnvironmentName,
+        [hashtable]$Variables = @{}
+    )
+
+    if (-not $VariableGroupName) { $VariableGroupName = "$PipelineName-vars" }
+    if (-not $EnvironmentName)   { $EnvironmentName   = "$PipelineName-env" }
+
+    Write-Host ""
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host "  Azure DevOps Pipeline Bootstrap" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host "Organization : $Organization"
+    Write-Host "Project      : $Project"
+    Write-Host "Pipeline     : $PipelineName"
+    Write-Host "Repository   : $RepositoryName"
+    Write-Host "YAML Path    : $YamlPath"
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    # 1. Create Variable Group
+    Write-Host "[1/3] Creating Variable Group..." -ForegroundColor Yellow
+    $vg = New-AzDoVariableGroup -Organization $Organization -Project $Project `
+        -VariableGroupName $VariableGroupName -Variables $Variables
+
+    # 2. Create Environment
+    Write-Host "[2/3] Creating Environment..." -ForegroundColor Yellow
+    $env = New-AzDoEnvironment -Organization $Organization -Project $Project `
+        -EnvironmentName $EnvironmentName
+
+    # 3. Create YAML Pipeline
+    Write-Host "[3/3] Creating YAML Pipeline..." -ForegroundColor Yellow
+    $pipeline = New-AzDoYamlPipeline -Organization $Organization -Project $Project `
+        -PipelineName $PipelineName -RepositoryName $RepositoryName -YamlPath $YamlPath
+
+    # Summary
+    Write-Host ""
+    Write-Host "====================================================" -ForegroundColor Green
+    Write-Host "  BOOTSTRAP COMPLETED SUCCESSFULLY" -ForegroundColor Green
+    Write-Host "====================================================" -ForegroundColor Green
+
+    $result = [PSCustomObject]@{
+        PipelineId        = $pipeline.id
+        PipelineName      = $pipeline.name
+        PipelineUrl       = $pipeline._links.web.href
+        VariableGroupId   = $vg.id
+        VariableGroupName = $vg.name
+        EnvironmentId     = $env.id
+        EnvironmentName   = $env.name
+    }
+
+    $result | Format-List
+    return $result
+}
+
+# ============================================================
+# EXECUTION
+# ============================================================
+
+New-AzDoPipelineBootstrap `
+    -Organization   $Organization `
+    -Project        $Project `
+    -PipelineName   $PipelineName `
+    -RepositoryName $RepositoryName `
+    -YamlPath       $YamlPath `
+    -VariableGroupName $VariableGroupName `
+    -EnvironmentName   $EnvironmentName `
+    -Variables      $Variables
