@@ -1,0 +1,19 @@
+# Lists permanent and eligible privileged role assignments (requires Microsoft.Graph module)
+# Install-Module Microsoft.Graph -Scope CurrentUser
+Connect-MgGraph -Scopes "RoleManagement.Read.Directory","Directory.Read.All" -NoWelcome
+
+$roles = Get-MgRoleManagementDirectoryRoleDefinition | Where-Object { $_.DisplayName -match "Global|Privileged|User Access|Security" }
+$assignments = @()
+foreach ($role in $roles) {
+    $perms = Get-MgRoleManagementDirectoryRoleAssignment -Filter "roleDefinitionId eq '$($role.Id)'"
+    foreach ($a in $perms) {
+        $user = Get-MgUser -UserId $a.PrincipalId -ErrorAction SilentlyContinue
+        $assignments += [PSCustomObject]@{
+            Role          = $role.DisplayName
+            Principal     = $user.DisplayName ?? $a.PrincipalId
+            PrincipalType = if ($user) { "User" } else { "Other" }
+            AssignmentId  = $a.Id
+        }
+    }
+}
+$assignments | Format-Table -AutoSize
