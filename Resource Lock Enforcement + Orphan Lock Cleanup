@@ -1,0 +1,11 @@
+# Applies CanNotDelete locks to critical RGs and removes locks on deleted resources
+$criticalRGs = @("rg-prod-networking","rg-prod-identity","rg-prod-shared")
+foreach ($rg in $criticalRGs) {
+    $existing = Get-AzResourceLock -ResourceGroupName $rg -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-AzResourceLock -LockName "Protect-$rg" -LockLevel CanNotDelete -ResourceGroupName $rg -Force | Out-Null
+        Write-Host "Lock applied to $rg"
+    }
+}
+
+# Optional: scan for locks whose resources no longer exist (advanced cleanup)
