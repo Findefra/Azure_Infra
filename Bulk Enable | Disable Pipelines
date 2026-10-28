@@ -1,0 +1,28 @@
+function Set-AzDoPipelineState {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int[]]$PipelineIds,
+        [Parameter(Mandatory)][ValidateSet("enabled","disabled")][string]$State,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{
+        Authorization  = "Basic $base64Auth"
+        "Content-Type" = "application/json"
+    }
+
+    foreach ($id in $PipelineIds) {
+        # Note: Pipeline enable/disable is done via the build definition API for classic, 
+        # or by updating the YAML pipeline settings. This example uses the older build definition endpoint for reliability.
+        $uri = "https://dev.azure.com/$Organization/$Project/_apis/build/definitions/$id`?api-version=7.1"
+        $def = Invoke-RestMethod -Uri $uri -Headers $headers
+
+        $def.queueStatus = $State   # "enabled" or "disabled"
+        $body = $def | ConvertTo-Json -Depth 10
+
+        Invoke-RestMethod -Uri $uri -Headers $headers -Method Put -Body $body | Out-Null
+        Write-Host "Pipeline $id set to $State" -ForegroundColor Cyan
+    }
+}
