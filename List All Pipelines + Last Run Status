@@ -1,0 +1,33 @@
+function Get-AzDoPipelines {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+    $headers = @{ Authorization = "Basic $base64Auth" }
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines?api-version=7.1"
+    $pipelines = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+
+    $results = foreach ($p in $pipelines.value) {
+        $runsUri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$($p.id)/runs?api-version=7.1&`$top=1"
+        $lastRun = (Invoke-RestMethod -Uri $runsUri -Headers $headers).value | Select-Object -First 1
+
+        [PSCustomObject]@{
+            Id          = $p.id
+            Name        = $p.name
+            Folder      = $p.folder
+            Type        = $p.configuration.type
+            LastRunId   = $lastRun.id
+            LastStatus  = $lastRun.state
+            LastResult  = $lastRun.result
+            LastRunTime = $lastRun.createdDate
+            Url         = $p._links.web.href
+        }
+    }
+    $results | Sort-Object Name | Format-Table -AutoSize
+}
+
+Get-AzDoPipelines -Organization $Organization -Project $Project
