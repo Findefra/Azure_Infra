@@ -1,0 +1,28 @@
+function Get-AzDoReleaseDefinitions {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+    $uri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/definitions?api-version=7.1&`$expand=lastRelease"
+
+    $defs = Invoke-RestMethod -Uri $uri -Headers $headers
+
+    $results = foreach ($d in $defs.value) {
+        [PSCustomObject]@{
+            Id              = $d.id
+            Name            = $d.name
+            Path            = $d.path
+            IsDeleted       = $d.isDeleted
+            LastReleaseId   = $d.lastRelease.id
+            LastReleaseName = $d.lastRelease.name
+            LastStatus      = $d.lastRelease.state          # active / abandoned / etc.
+            Environments    = ($d.environments.name -join ", ")
+            CreatedBy       = $d.createdBy.displayName
+            Url             = $d._links.web.href
+        }
+    }
+    $results | Sort-Object Name | Format-Table -AutoSize
+}
