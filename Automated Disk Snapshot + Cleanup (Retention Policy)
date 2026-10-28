@@ -1,0 +1,20 @@
+# Creates snapshots of all managed disks in a RG and removes snapshots older than X days
+param(
+    [Parameter(Mandatory)][string]$ResourceGroupName,
+    [int]$RetentionDays = 14
+)
+
+$disks = Get-AzDisk -ResourceGroupName $ResourceGroupName
+foreach ($disk in $disks) {
+    $snapName = "$($disk.Name)-snap-$(Get-Date -Format yyyyMMdd-HHmm)"
+    $snapConfig = New-AzSnapshotConfig -SourceUri $disk.Id -CreateOption Copy -Location $disk.Location
+    New-AzSnapshot -Snapshot $snapConfig -SnapshotName $snapName -ResourceGroupName $ResourceGroupName | Out-Null
+    Write-Host "Created snapshot $snapName"
+}
+
+# Cleanup
+$cutoff = (Get-Date).AddDays(-$RetentionDays)
+Get-AzSnapshot -ResourceGroupName $ResourceGroupName | Where-Object { $_.TimeCreated -lt $cutoff } | ForEach-Object {
+    Remove-AzSnapshot -ResourceGroupName $_.ResourceGroupName -SnapshotName $_.Name -Force
+    Write-Host "Removed old snapshot $($_.Name)"
+}
