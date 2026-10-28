@@ -1,0 +1,35 @@
+function Start-AzDoPipeline {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$PipelineId,
+        [string]$Branch = "refs/heads/main",
+        [hashtable]$Parameters = @{},
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = @{
+        Authorization  = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+        "Content-Type" = "application/json"
+    }
+
+    $body = @{
+        resources = @{
+            repositories = @{
+                self = @{ refName = $Branch }
+            }
+        }
+        templateParameters = $Parameters
+    } | ConvertTo-Json -Depth 5
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines/$PipelineId/runs?api-version=7.1"
+    $run = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+
+    Write-Host "Pipeline queued successfully!" -ForegroundColor Green
+    [PSCustomObject]@{
+        RunId  = $run.id
+        Name   = $run.name
+        State  = $run.state
+        Url    = $run._links.web.href
+    }
+}
