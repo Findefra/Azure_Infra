@@ -1,0 +1,20 @@
+# Scales an App Service Plan and verifies site health after scale
+param(
+    [Parameter(Mandatory)][string]$ResourceGroupName,
+    [Parameter(Mandatory)][string]$AppServicePlanName,
+    [Parameter(Mandatory)][string]$SkuName,          # e.g. P1v3, S1
+    [string]$WebAppName
+)
+
+Set-AzAppServicePlan -ResourceGroupName $ResourceGroupName -Name $AppServicePlanName -Tier (Get-AzAppServicePlan ...).Sku.Tier -WorkerSize $SkuName
+
+if ($WebAppName) {
+    Start-Sleep -Seconds 45
+    $url = "https://$WebAppName.azurewebsites.net"
+    try {
+        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30
+        Write-Host "Health check status: $($resp.StatusCode)" -ForegroundColor Green
+    } catch {
+        Write-Warning "Health check failed: $_"
+    }
+}
