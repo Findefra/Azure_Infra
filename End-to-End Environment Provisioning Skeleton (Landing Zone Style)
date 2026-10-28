@@ -1,0 +1,28 @@
+# High-level orchestration script that creates a consistent environment footprint
+param(
+    [Parameter(Mandatory)][string]$Environment,      # dev / test / prod
+    [Parameter(Mandatory)][string]$Location = "eastus2",
+    [string]$Owner = $env:USERNAME
+)
+
+$rgName = "rg-$Environment-core"
+$tags = @{ Environment = $Environment; Owner = $Owner; ManagedBy = "PowerShell-Automation"; Created = (Get-Date -Format o) }
+
+# 1. Resource Group
+$rg = New-AzResourceGroup -Name $rgName -Location $Location -Tag $tags -Force
+
+# 2. Log Analytics
+$law = New-AzOperationalInsightsWorkspace -ResourceGroupName $rgName -Name "law-$Environment" -Location $Location -Sku "PerGB2018" -Tag $tags
+
+# 3. Key Vault (RBAC authorization model)
+$kv = New-AzKeyVault -ResourceGroupName $rgName -VaultName "kv-$Environment-$(Get-Random -Max 9999)" -Location $Location -Sku Standard -EnableRbacAuthorization -Tag $tags
+
+# 4. Storage Account (secure defaults)
+$sa = New-AzStorageAccount -ResourceGroupName $rgName -Name "st$($Environment)$(Get-Random -Max 99999)" -Location $Location -SkuName Standard_LRS -Kind StorageV2 -EnableHttpsTrafficOnly $true -MinimumTlsVersion TLS1_2 -AllowBlobPublicAccess $false -Tag $tags
+
+# 5. Virtual Network
+$subnet = New-AzVirtualNetworkSubnetConfig -Name "snet-default" -AddressPrefix "10.10.0.0/24"
+$vnet = New-AzVirtualNetwork -ResourceGroupName $rgName -Name "vnet-$Environment" -Location $Location -AddressPrefix "10.10.0.0/16" -Subnet $subnet -Tag $tags
+
+Write-Host "`nEnvironment '$Environment' foundation created in $Location" -ForegroundColor Green
+Write-Host "RG: $rgName | LAW: $($law.Name) | KV: $($kv.VaultName) | SA: $($sa.StorageAccountName)"
