@@ -1,0 +1,39 @@
+function Set-AzDoReleaseApproval {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$ApprovalId,
+        [Parameter(Mandatory)][ValidateSet("approved","rejected")][string]$Status,
+        [string]$Comments = "Approved via automation",
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+
+    $body = @{
+        status   = $Status
+        comments = $Comments
+    } | ConvertTo-Json
+
+    $uri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/approvals/$ApprovalId`?api-version=7.1"
+    $result = Invoke-RestMethod -Uri $uri -Headers $headers -Method Patch -Body $body
+
+    Write-Host "Approval $ApprovalId set to '$Status'" -ForegroundColor $(if ($Status -eq "approved") { "Green" } else { "Yellow" })
+    return $result
+}
+
+# Helper: Find pending approvals
+function Get-AzDoPendingApprovals {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+    $uri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/approvals?api-version=7.1&statusFilter=pending"
+
+    $approvals = Invoke-RestMethod -Uri $uri -Headers $headers
+    $approvals.value | Select-Object id, release.name, releaseEnvironment.name, approver.displayName, createdOn |
+        Format-Table -AutoSize
+}
