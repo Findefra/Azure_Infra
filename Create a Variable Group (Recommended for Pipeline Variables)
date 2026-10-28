@@ -1,0 +1,37 @@
+function New-AzDoVariableGroup {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$VariableGroupName,
+        [Parameter(Mandatory)][hashtable]$Variables,     # @{ "MyVar" = "value"; "SecretVar" = "secretvalue" }
+        [string[]]$SecretVariables = @(),                # List of keys that should be marked as secret
+        [string]$Description = "Created via PowerShell",
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = @{
+        Authorization  = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+        "Content-Type" = "application/json"
+    }
+
+    $vars = @{}
+    foreach ($key in $Variables.Keys) {
+        $vars[$key] = @{
+            value    = $Variables[$key]
+            isSecret = ($SecretVariables -contains $key)
+        }
+    }
+
+    $body = @{
+        name        = $VariableGroupName
+        description = $Description
+        type        = "Vsts"
+        variables   = $vars
+    } | ConvertTo-Json -Depth 5
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/distributedtask/variablegroups?api-version=7.1"
+    $group = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+
+    Write-Host "Variable Group '$VariableGroupName' created (ID: $($group.id))" -ForegroundColor Green
+    return $group
+}
