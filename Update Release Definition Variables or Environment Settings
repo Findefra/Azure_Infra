@@ -1,0 +1,26 @@
+function Update-AzDoReleaseDefinition {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$DefinitionId,
+        [hashtable]$Variables = @{},          # Variables to add/update at definition level
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+
+    # Get current definition
+    $getUri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/definitions/$DefinitionId`?api-version=7.1"
+    $def = Invoke-RestMethod -Uri $getUri -Headers $headers
+
+    # Update variables
+    foreach ($key in $Variables.Keys) {
+        $def.variables[$key] = @{ value = $Variables[$key]; allowOverride = $true }
+    }
+
+    $body = $def | ConvertTo-Json -Depth 15
+    $updateUri = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/definitions/$DefinitionId`?api-version=7.1"
+
+    $updated = Invoke-RestMethod -Uri $updateUri -Headers $headers -Method Put -Body $body
+    Write-Host "Release definition $($updated.name) (ID: $DefinitionId) updated successfully." -ForegroundColor Green
+}
