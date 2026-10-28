@@ -1,0 +1,45 @@
+function Start-AzDoRelease {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][int]$DefinitionId,
+        [string]$Description = "Queued via PowerShell",
+        [hashtable]$Variables = @{},           # Optional release variables
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = Get-AzDoHeaders -Pat $Pat
+
+    $bodyObj = @{
+        definitionId = $DefinitionId
+        description  = $Description
+        isDraft      = $false
+        reason       = "none"
+        manualEnvironments = $null
+    }
+
+    if ($Variables.Count -gt 0) {
+        $bodyObj.variables = @{}
+        foreach ($key in $Variables.Keys) {
+            $bodyObj.variables[$key] = @{ value = $Variables[$key] }
+        }
+    }
+
+    $body = $bodyObj | ConvertTo-Json -Depth 6
+    $uri  = "https://vsrm.dev.azure.com/$Organization/$Project/_apis/release/releases?api-version=7.1"
+
+    $release = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+
+    [PSCustomObject]@{
+        ReleaseId   = $release.id
+        Name        = $release.name
+        Status      = $release.status
+        CreatedOn   = $release.createdOn
+        Url         = $release._links.web.href
+        Environments = $release.environments | Select-Object name, status, rank
+    }
+}
+
+# Example
+# Start-AzDoRelease -Organization $Organization -Project $Project -DefinitionId 15 `
+#     -Variables @{ "Environment" = "Production"; "BuildNumber" = "2026.10.27.1" }
