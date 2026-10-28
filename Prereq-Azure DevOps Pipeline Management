@@ -1,0 +1,9 @@
+# Recommended: Create a PAT with these scopes:
+# - Build (Read & execute)
+# - Release (Read, write, execute & manage)
+# - Code (Read) if working with YAML repos
+# - Variable Groups (Read, create, & manage)
+
+$env:AZDO_PAT = "your-pat-here"          # Prefer environment variable or Azure Key Vault
+$Organization = "your-org"               # e.g. contoso
+$Project     = "your-project"
