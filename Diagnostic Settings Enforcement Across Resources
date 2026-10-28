@@ -1,0 +1,16 @@
+# Ensures critical resource types send logs to a central Log Analytics workspace
+param(
+    [Parameter(Mandatory)][string]$WorkspaceId,
+    [string[]]$ResourceTypes = @("Microsoft.Compute/virtualMachines","Microsoft.Network/networkSecurityGroups","Microsoft.Storage/storageAccounts","Microsoft.KeyVault/vaults")
+)
+
+$resources = Get-AzResource | Where-Object { $ResourceTypes -contains $_.ResourceType }
+foreach ($res in $resources) {
+    $existing = Get-AzDiagnosticSetting -ResourceId $res.ResourceId -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        $logs = @()
+        # Simplified – expand categories per resource type in real use
+        Set-AzDiagnosticSetting -ResourceId $res.ResourceId -WorkspaceId $WorkspaceId -Enabled $true -Name "CentralDiag" | Out-Null
+        Write-Host "Enabled diagnostics on $($res.Name)" -ForegroundColor Green
+    }
+}
