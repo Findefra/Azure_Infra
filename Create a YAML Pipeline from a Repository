@@ -1,0 +1,44 @@
+function New-AzDoYamlPipeline {
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$PipelineName,
+        [Parameter(Mandatory)][string]$RepositoryName,      # Name of the Azure Repos or GitHub repo
+        [Parameter(Mandatory)][string]$YamlPath = "/azure-pipelines.yml",
+        [string]$Folder = "\\",                             # Pipeline folder path
+        [string]$Pat = $env:AZDO_PAT
+    )
+
+    $headers = @{
+        Authorization  = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$Pat"))
+        "Content-Type" = "application/json"
+    }
+
+    # Get repository ID
+    $repoUri = "https://dev.azure.com/$Organization/$Project/_apis/git/repositories/$RepositoryName`?api-version=7.1"
+    $repo = Invoke-RestMethod -Uri $repoUri -Headers $headers
+
+    $body = @{
+        name = $PipelineName
+        folder = $Folder
+        configuration = @{
+            type = "yaml"
+            path = $YamlPath
+            repository = @{
+                id = $repo.id
+                type = "azureReposGit"
+                name = $RepositoryName
+            }
+        }
+    } | ConvertTo-Json -Depth 5
+
+    $uri = "https://dev.azure.com/$Organization/$Project/_apis/pipelines?api-version=7.1"
+    $pipeline = Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -Body $body
+
+    Write-Host "Pipeline created successfully!" -ForegroundColor Green
+    [PSCustomObject]@{
+        PipelineId = $pipeline.id
+        Name       = $pipeline.name
+        Url        = $pipeline._links.web.href
+    }
+}
