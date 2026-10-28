@@ -1,0 +1,31 @@
+# Connects using Managed Identity, Service Principal, or Interactive, then lists and switches subscriptions cleanly
+param(
+    [ValidateSet("Interactive","ServicePrincipal","ManagedIdentity")]
+    [string]$AuthMethod = "Interactive",
+    [string]$TenantId,
+    [string]$ClientId,
+    [string]$ClientSecret,
+    [string]$SubscriptionNameOrId
+)
+
+$ErrorActionPreference = "Stop"
+
+switch ($AuthMethod) {
+    "Interactive"     { Connect-AzAccount -Tenant $TenantId -WarningAction SilentlyContinue }
+    "ServicePrincipal"{ 
+        $sec = ConvertTo-SecureString $ClientSecret -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential($ClientId, $sec)
+        Connect-AzAccount -ServicePrincipal -Tenant $TenantId -Credential $cred
+    }
+    "ManagedIdentity" { Connect-AzAccount -Identity }
+}
+
+$subs = Get-AzSubscription | Sort-Object Name
+$subs | Format-Table Name, Id, State, TenantId -AutoSize
+
+if ($SubscriptionNameOrId) {
+    $target = $subs | Where-Object { $_.Name -eq $SubscriptionNameOrId -or $_.Id -eq $SubscriptionNameOrId }
+    if (-not $target) { throw "Subscription not found" }
+    Set-AzContext -SubscriptionId $target.Id | Out-Null
+    Write-Host "Switched to: $($target.Name)" -ForegroundColor Green
+}
